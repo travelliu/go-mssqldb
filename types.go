@@ -88,18 +88,19 @@ const (
 // TYPE_INFO rule
 // http://msdn.microsoft.com/en-us/library/dd358284.aspx
 type typeInfo struct {
-	TypeId    uint8
-	UserType  uint32
-	Flags     uint16
-	Size      int
-	Scale     uint8
-	Prec      uint8
-	Buffer    []byte
-	Collation cp.Collation
-	UdtInfo   udtInfo
-	XmlInfo   xmlInfo
-	Reader    func(ti *typeInfo, r *tdsBuffer, cryptoMeta *cryptoMetadata) (res interface{})
-	Writer    func(w io.Writer, ti typeInfo, buf []byte) (err error)
+	TypeId       uint8
+	UserType     uint32
+	Flags        uint16
+	Size         int
+	Scale        uint8
+	Prec         uint8
+	Buffer       []byte
+	Collation    cp.Collation
+	UdtInfo      udtInfo
+	XmlInfo      xmlInfo
+	Reader       func(ti *typeInfo, r *tdsBuffer, cryptoMeta *cryptoMetadata) (res interface{})
+	Writer       func(w io.Writer, ti typeInfo, buf []byte) (err error)
+	ClientSortId uint8
 }
 
 // Common Language Runtime (CLR) Instances
@@ -121,7 +122,7 @@ type xmlInfo struct {
 	XmlSchemaCollection string
 }
 
-func readTypeInfo(r *tdsBuffer, typeId byte, c *cryptoMetadata) (res typeInfo) {
+func readTypeInfo(r *tdsBuffer, typeId byte, c *cryptoMetadata, s *tdsSession) (res typeInfo) {
 	res.TypeId = typeId
 	switch typeId {
 	case typeNull, typeInt1, typeBit, typeInt2, typeInt4, typeDateTim4,
@@ -142,7 +143,7 @@ func readTypeInfo(r *tdsBuffer, typeId byte, c *cryptoMetadata) (res typeInfo) {
 		res.Reader = readFixedType
 		res.Buffer = make([]byte, res.Size)
 	default: // all others are VARLENTYPE
-		readVarLen(&res, r, c)
+		readVarLen(&res, r, c, s)
 	}
 	return
 }
@@ -469,6 +470,9 @@ func readShortLenType(ti *typeInfo, r *tdsBuffer, c *cryptoMetadata) interface{}
 	buf := ti.Buffer[:size]
 	switch ti.TypeId {
 	case typeBigVarChar, typeBigChar:
+		if ti.ClientSortId == ti.Collation.SortId {
+			return string(buf)
+		}
 		return decodeChar(ti.Collation, buf)
 	case typeBigVarBin, typeBigBinary:
 		// a copy, because the backing array for ti.Buffer is reused
@@ -737,7 +741,7 @@ func writePLPType(w io.Writer, ti typeInfo, buf []byte) (err error) {
 	}
 }
 
-func readVarLen(ti *typeInfo, r *tdsBuffer, c *cryptoMetadata) {
+func readVarLen(ti *typeInfo, r *tdsBuffer, c *cryptoMetadata, s *tdsSession) {
 	switch ti.TypeId {
 	case typeDateN:
 		ti.Size = 3
@@ -803,6 +807,10 @@ func readVarLen(ti *typeInfo, r *tdsBuffer, c *cryptoMetadata) {
 		switch ti.TypeId {
 		case typeBigVarChar, typeBigChar, typeNVarChar, typeNChar:
 			ti.Collation = readCollation(r)
+		}
+		switch ti.TypeId {
+		case typeBigVarChar, typeBigChar:
+			ti.ClientSortId = s.params.ClientSortId
 		}
 		if ti.Size == 0xffff {
 			ti.Reader = readPLPType

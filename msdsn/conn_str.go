@@ -79,6 +79,7 @@ const (
 	DialTimeout            = "dial timeout"
 	Pipe                   = "pipe"
 	MultiSubnetFailover    = "multisubnetfailover"
+	ClientSortId           = "clientsortid"
 )
 
 type Config struct {
@@ -127,10 +128,11 @@ type Config struct {
 	BrowserMessage BrowserMsg
 	// ChangePassword is used to set the login's password during login. Ignored for non-SQL authentication.
 	ChangePassword string
-	//ColumnEncryption is true if the application needs to decrypt or encrypt Always Encrypted values
+	// ColumnEncryption is true if the application needs to decrypt or encrypt Always Encrypted values
 	ColumnEncryption bool
 	// Attempt to connect to all IPs in parallel when MultiSubnetFailover is true
 	MultiSubnetFailover bool
+	ClientSortId        uint8
 }
 
 func readDERFile(filename string) ([]byte, error) {
@@ -504,6 +506,14 @@ func Parse(dsn string) (Config, error) {
 		// Defaulting to true to prevent breaking change although other client libraries default to false
 		p.MultiSubnetFailover = true
 	}
+	sortIdStr, ok := params[ClientSortId]
+	if ok {
+		sortId, err := strconv.ParseUint(sortIdStr, 10, 32)
+		if err == nil {
+			p.ClientSortId = uint8(sortId)
+		}
+
+	}
 	return p, nil
 }
 
@@ -554,7 +564,6 @@ func (p Config) URL() *url.URL {
 		res.Path = p.Instance
 	}
 	q.Add(DialTimeout, strconv.FormatFloat(float64(p.DialTimeout.Seconds()), 'f', 0, 64))
-
 	switch p.Encryption {
 	case EncryptionDisabled:
 		q.Add(Encrypt, "DISABLE")

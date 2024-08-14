@@ -172,6 +172,7 @@ type tdsSession struct {
 	routedPort      uint16
 	alwaysEncrypted bool
 	aeSettings      *alwaysEncryptedSettings
+	params          msdsn.Config
 }
 
 type alwaysEncryptedSettings struct {
@@ -1144,7 +1145,7 @@ func getTLSConn(conn *timeoutConn, p msdsn.Config, alpnSeq string) (tlsConn *tls
 			return nil, err
 		}
 	}
-	//Set ALPN Sequence
+	// Set ALPN Sequence
 	config.NextProtos = []string{alpnSeq}
 	tlsConn = tls.Client(conn.c, config)
 	err = tlsConn.Handshake()
@@ -1209,6 +1210,7 @@ initiate_connection:
 		logger:     logger,
 		logFlags:   uint64(p.LogFlags),
 		aeSettings: &alwaysEncryptedSettings{keyProviders: aecmk.GetGlobalCekProviders()},
+		params:     p,
 	}
 
 	for i, p := range c.keyProviders {
@@ -1239,7 +1241,7 @@ initiate_connection:
 		return nil, err
 	}
 
-	//We need not perform TLS handshake if the communication channel is already encrypted (encrypt=strict)
+	// We need not perform TLS handshake if the communication channel is already encrypted (encrypt=strict)
 	if !isTransportEncrypted {
 		if encrypt != encryptNotSup {
 			var config *tls.Config
@@ -1343,8 +1345,8 @@ initiate_connection:
 				}
 			// TODO: for Live ID authentication it may be necessary to
 			// compare fedAuth.Nonce == token.Nonce and keep track of signature
-			//case fedAuthAckStruct:
-			//fedAuth.Signature = token.Signature
+			// case fedAuthAckStruct:
+			// fedAuth.Signature = token.Signature
 			case fedAuthInfoStruct:
 				// For ADAL workflows this contains the STS URL and server SPN.
 				// If received outside of an ADAL workflow, ignore.
